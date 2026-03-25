@@ -12,6 +12,13 @@
 #include <climits>
 #include <cassert>
 
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <sys/ioctl.h>
+    #include <unistd.h>
+#endif
+
 using namespace std::chrono;
 
 inline std::chrono::milliseconds operator ""_FPS(unsigned long long fps) {
@@ -33,7 +40,8 @@ namespace echo
         static constexpr uint8_t BLUE = 3;
         static constexpr uint8_t MAGENTA = 4;
         static constexpr uint8_t ORANGE = 5;
-        static constexpr uint8_t RESET = 6;
+        static constexpr uint8_t CYAN = 6;
+        static constexpr uint8_t RESET = 100;
     private:
         void idToRGB(uint8_t colorID) {
             switch (colorID) {
@@ -43,6 +51,7 @@ namespace echo
                 case BLUE:      { b = 205; r = g = 0; break; }
                 case MAGENTA:   { r = b = 205; g = 0; break; }
                 case ORANGE:    { r = 205; g = 135; b = 0; break; }
+                case CYAN:      { r = 0; g = b = 255; break; }
                 case RESET:     { r = g = b = 229; break; }
                 default: throw std::invalid_argument("COLOR ID IS INVALID!\n");
             }
@@ -96,6 +105,18 @@ namespace echo
         std::lock_guard<std::mutex> lock(screen_lock);
         hide_cursor();
         std::cout << "\033[2J\033[H" << std::flush;        
+    }
+
+    inline std::pair<int, int> get_terminal_size() {
+#ifdef _WIN32
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+        return { csbi.srWindow.Right - csbi.srWindow.Left + 1, csbi.srWindow.Bottom - csbi.srWindow.Top + 1 };
+#else
+        struct winsize w;
+        ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+        return { w.ws_col, w.ws_row };
+#endif
     }
 
 
@@ -529,7 +550,7 @@ namespace echo
                 int dy = -abs(e.y - s.y), sy = s.y < e.y ? 1 : -1;
                 int err = dx + dy, e2;
 
-                int steps = std::max(dx, abs(dy)); // we check how many steps it takes to draw the line
+                int steps = (std::max)(dx, abs(dy)); // we check how many steps it takes to draw the line
                 int current_step = 0; // this will help in interpolation
 
                 while (true) {
